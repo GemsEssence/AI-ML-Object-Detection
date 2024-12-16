@@ -1,0 +1,7 @@
+# Ignore virtual environment
+env/
+env_3_10/
+env_3_11/
+
+# Ignore Python cache files
+__pycache__/
