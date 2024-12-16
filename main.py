@@ -1,54 +1,111 @@
+import sys
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
-import tensorflow as tf
+from PyQt6.QtWidgets import QApplication, QMainWindow, QFileDialog
+from PyQt6.QtGui import QIcon, QFont, QFontDatabase, QPixmap, QImage
+from PyQt6.QtCore import Qt
+import tensorflow_hub as hub
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
-import tensorflow_hub as hub
 
-# Load the model
-model_path = "tf_image_detection_model.h5"
-custom_objects = {'KerasLayer': hub.KerasLayer}
-model = load_model(model_path, custom_objects=custom_objects)
+from image_detection_UI import Ui_Image_Detection  # Import the generated UI file
 
-# Define the categories
-categories = ["Animal", "Fruit", "Human", "Object", "Vegetable"]
+class Image_Detection(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.setup_connections()
+        self.init_variables()
 
-# Define the confidence threshold for predictions
-confidence_threshold = 0.70  # Set the threshold (e.g., 70%)
 
-# Function to predict the category and display the image with a rectangle
-def predict_and_display(image_path):
-    # Load and preprocess the image
-    img = image.load_img(image_path, target_size=(224, 224))  # Match your model's input size
-    img_array = image.img_to_array(img)
-    img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
-    img_array = img_array / 255.0  # Normalize to range [0, 1]
+    def init_ui(self):
+        # Set up the user interface
+        self.ui = Ui_Image_Detection()
+        self.ui.setupUi(self)
 
-    # Predict the category
-    predictions = model.predict(img_array)
-    predicted_index = np.argmax(predictions)
-    predicted_category = categories[predicted_index]
-    predicted_confidence = np.max(predictions)  # Get the confidence for the prediction
 
-    # If the confidence is below the threshold, classify as "Unknown"
-    if predicted_confidence < confidence_threshold:
-        predicted_category = "Unknown"
+    def init_variables(self):
+        # Load the model
+        model_path = "tf_image_detection_model.h5"
+        custom_objects = {'KerasLayer': hub.KerasLayer}
+        self.model = load_model(model_path, custom_objects=custom_objects)
 
-    # Load the original image
-    img = cv2.imread(image_path)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        # Define the categories
+        self.categories = ["Animal", "Fruit", "Human", "Object", "Vegetable"]
 
-    # Display the image with prediction and rectangle
-    plt.figure(figsize=(8, 8))
-    plt.imshow(img)
-    plt.title(f"Predicted: {predicted_category} (Confidence: {predicted_confidence:.2f})", fontsize=16)
-    plt.axis("off")
-    plt.show()
+        # Define the confidence threshold for predictions
+        self.confidence_threshold = 0.70
 
-    return predicted_category, predicted_confidence
 
-# Test with an image
-image_path = "tiger.jpeg"
-category, confidence = predict_and_display(image_path)
-print(f"The predicted category is: {category} with confidence {confidence:.2f}")
+    def setup_connections(self):
+        self.ui.upload_img_btn.clicked.connect(self.load_image)
+        self.ui.categories_btn.clicked.connect(self.show_pred_categories_page)
+        self.ui.back_btn.clicked.connect(self.show_home_page)
+
+
+    def load_image(self):
+        # Open file dialog to select an image
+        options = QFileDialog.Option.DontUseNativeDialog
+        image_path, _ = QFileDialog.getOpenFileName(
+            self, "Select an Image", "", "Images (*.png *.jpg *.jpeg *.bmp)", options=options
+        )
+        if image_path:
+            # Load and display the image
+            self.display_image(image_path)
+
+            # Predict and display the category
+            category, confidence = self.predict_category(image_path)
+            self.ui.prediction_msg.setText(f"Predicted: {category} (Confidence: {confidence:.2f})")
+
+
+    def display_image(self, image_path):
+        # Read the image using OpenCV
+        img = cv2.imread(image_path)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        # Convert the image to QImage
+        height, width, channel = img.shape
+        bytes_per_line = 3 * width
+        q_image = QImage(img.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+
+        # Display the image in the QLabel
+        pixmap = QPixmap.fromImage(q_image)
+        self.ui.image_label.setPixmap(pixmap.scaled(600, 400, Qt.AspectRatioMode.KeepAspectRatio))
+
+
+    # Function to predict the category
+    def predict_category(self, image_path):
+        # Load and preprocess the image
+        img = image.load_img(image_path, target_size=(224, 224))
+        img_array = image.img_to_array(img)
+        img_array = np.expand_dims(img_array, axis=0)  
+        img_array = img_array / 255.0  
+
+        # Predict the category
+        predictions = self.model.predict(img_array)
+        predicted_index = np.argmax(predictions)
+        predicted_category = self.categories[predicted_index]
+        predicted_confidence = np.max(predictions)
+
+        # If the confidence is below the threshold, classify as "Unknown"
+        if predicted_confidence < self.confidence_threshold:
+            predicted_category = "Unknown"
+
+        return predicted_category, predicted_confidence
+
+
+    def show_pred_categories_page(self):
+        self.ui.stackedWidget.setCurrentWidget(self.ui.pred_category_page)
+
+
+    def show_home_page(self):
+        self.ui.stackedWidget.setCurrentWidget(self.ui.home_page)
+
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon('icons/app_icon.svg'))
+    window = Image_Detection()
+    window.show()
+    sys.exit(app.exec())
